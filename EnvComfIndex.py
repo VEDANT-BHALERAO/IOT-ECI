@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import time
 from datetime import datetime
-import pytz  # <-- Added for the Indian Standard Time fix!
+import pytz
 
 # --- 1. CONFIGURATION ---
 FIREBASE_URL = "https://staycomfee-9f647-default-rtdb.asia-southeast1.firebasedatabase.app/Live.json"
@@ -21,6 +21,50 @@ st.markdown("""
         padding: 20px; 
         border: 1px solid rgba(128, 128, 128, 0.2); 
         margin-bottom: 15px; 
+    }
+    
+    /* --- NEW ALARM ANIMATIONS & STYLING --- */
+    @keyframes pulse-border {
+        0% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0.7); }
+        70% { box-shadow: 0 0 0 15px rgba(255, 75, 75, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0); }
+    }
+    .alert-card {
+        background: linear-gradient(135deg, #ff4b4b 0%, #a70000 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 15px;
+        text-align: center;
+        border: 2px solid #ff4b4b;
+        margin-bottom: 25px;
+        animation: pulse-border 2s infinite;
+    }
+    .alert-card h2 {
+        color: white !important;
+        margin-top: 0;
+        margin-bottom: 10px;
+        font-size: 32px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    .alert-card .alert-reason {
+        font-size: 22px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        background: rgba(0,0,0,0.2);
+        padding: 8px 15px;
+        border-radius: 8px;
+        display: inline-block;
+    }
+    .alert-card .alert-stats {
+        font-size: 20px;
+        font-family: monospace;
+        background: rgba(255,255,255,0.15);
+        padding: 12px;
+        border-radius: 8px;
+        margin: 0;
+        font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -61,7 +105,7 @@ def circular_gauge(label, value, max_val, color="#58a6ff"):
 weather = get_weather(CITY, API_KEY)
 st.title(f"🌍 StayCOMFIEE : {CITY}")
 
-# Placeholder for the Alarm Box
+# Placeholder for the Alert Box
 alert_box = st.empty() 
 
 with st.sidebar:
@@ -99,37 +143,29 @@ status_text.success("🟢 Connected to Firebase (Asia-Southeast1)")
 
 while True:
     try:
-        # Fetch data from Firebase
         response = requests.get(FIREBASE_URL)
         
         if response.status_code == 200:
             data_cloud = response.json()
             
             if data_cloud:
-                # Extract values from the JSON payload
                 aq = int(data_cloud.get('Air', 0))
                 t = float(data_cloud.get('Temp', 0.0))
                 h = float(data_cloud.get('Hum', 0.0))
                 
-                # --- INDIAN STANDARD TIME LOGIC ---
                 ist_timezone = pytz.timezone('Asia/Kolkata')
                 now = datetime.now(ist_timezone).strftime("%H:%M:%S")
                 
-                # --- ALARM LOGIC ---
+                # --- VISUAL ALARM LOGIC ---
                 if aq > 300 or t > 35 or h > 60:
                     alert_box.markdown(f"""
-                        <div style="background-color: #ff4b4b; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid darkred; margin-bottom: 15px;">
-                            <h2 style="color: white; margin-bottom: 5px;">🚨 CRITICAL ALERT 🚨</h2>
-                            <p style="font-size: 18px; margin-bottom: 5px;"><b>Unsafe Environment Detected!</b></p>
-                            <p style="font-size: 16px;">Air: {aq} PPM | Temp: {t}°C | Hum: {h}%</p>
-                            
-                            <audio autoplay="true">
-                                <source src="https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg" type="audio/ogg">
-                            </audio>
+                        <div class="alert-card">
+                            <h2>⚠️ CRITICAL ALERT ⚠️</h2>
+                            <div class="alert-reason">Unsafe Environment Detected!</div>
+                            <div class="alert-stats">Air: {aq} PPM &nbsp;&nbsp;|&nbsp;&nbsp; Temp: {t}°C &nbsp;&nbsp;|&nbsp;&nbsp; Hum: {h}%</div>
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    # Clear the alert if everything is normal
                     alert_box.empty()
                 
                 # Update Gauges
@@ -138,11 +174,11 @@ while True:
                 gauge_temp.markdown(circular_gauge("°C", t, 50, "#ffa657"), unsafe_allow_html=True)
                 gauge_hum.markdown(circular_gauge("%", h, 100, "#7ee787"), unsafe_allow_html=True)
                 
-                # Update History Table
+                # Update History
                 new_row = pd.DataFrame({'Time': [now], 'Air': [aq], 'Temp': [t], 'Hum': [h]})
                 st.session_state.history = pd.concat([st.session_state.history, new_row]).tail(50)
                 
-                # Update Charts (Now with exact IST Time on the X-axis)
+                # Update Charts
                 chart_air.area_chart(st.session_state.history.set_index('Time')[['Air']], color=aq_color)
                 chart_temp.line_chart(st.session_state.history.set_index('Time')[['Temp']], color="#ffa657")
                 chart_hum.line_chart(st.session_state.history.set_index('Time')[['Hum']], color="#7ee787")
@@ -153,5 +189,4 @@ while True:
     except Exception as e:
         status_text.error(f"⚠️ Network Error: {e}")
         
-    # Wait 5 seconds before fetching again
     time.sleep(5)
