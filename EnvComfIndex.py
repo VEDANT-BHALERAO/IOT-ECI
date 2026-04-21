@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import time
 from datetime import datetime
+import pytz  # <-- Added for the Indian Standard Time fix!
 
 # --- 1. CONFIGURATION ---
 FIREBASE_URL = "https://staycomfee-9f647-default-rtdb.asia-southeast1.firebasedatabase.app/Live.json"
@@ -60,6 +61,9 @@ def circular_gauge(label, value, max_val, color="#58a6ff"):
 weather = get_weather(CITY, API_KEY)
 st.title(f"🌍 StayCOMFIEE : {CITY}")
 
+# Placeholder for the Alarm Box
+alert_box = st.empty() 
+
 with st.sidebar:
     st.header("🔌 Cloud Connection")
     status_text = st.empty()
@@ -106,10 +110,30 @@ while True:
                 aq = int(data_cloud.get('Air', 0))
                 t = float(data_cloud.get('Temp', 0.0))
                 h = float(data_cloud.get('Hum', 0.0))
-                now = datetime.now().strftime("%H:%M:%S")
+                
+                # --- INDIAN STANDARD TIME LOGIC ---
+                ist_timezone = pytz.timezone('Asia/Kolkata')
+                now = datetime.now(ist_timezone).strftime("%H:%M:%S")
+                
+                # --- ALARM LOGIC ---
+                if aq > 300 or t > 35 or h > 60:
+                    alert_box.markdown(f"""
+                        <div style="background-color: #ff4b4b; color: white; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid darkred; margin-bottom: 15px;">
+                            <h2 style="color: white; margin-bottom: 5px;">🚨 CRITICAL ALERT 🚨</h2>
+                            <p style="font-size: 18px; margin-bottom: 5px;"><b>Unsafe Environment Detected!</b></p>
+                            <p style="font-size: 16px;">Air: {aq} PPM | Temp: {t}°C | Hum: {h}%</p>
+                            
+                            <audio autoplay="true">
+                                <source src="https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg" type="audio/ogg">
+                            </audio>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    # Clear the alert if everything is normal
+                    alert_box.empty()
                 
                 # Update Gauges
-                aq_color = "#ff4b4b" if aq > 400 else "#58a6ff"
+                aq_color = "#ff4b4b" if aq > 300 else "#58a6ff" 
                 gauge_air.markdown(circular_gauge("PPM", aq, 1000, aq_color), unsafe_allow_html=True)
                 gauge_temp.markdown(circular_gauge("°C", t, 50, "#ffa657"), unsafe_allow_html=True)
                 gauge_hum.markdown(circular_gauge("%", h, 100, "#7ee787"), unsafe_allow_html=True)
@@ -118,7 +142,7 @@ while True:
                 new_row = pd.DataFrame({'Time': [now], 'Air': [aq], 'Temp': [t], 'Hum': [h]})
                 st.session_state.history = pd.concat([st.session_state.history, new_row]).tail(50)
                 
-                # Update Charts
+                # Update Charts (Now with exact IST Time on the X-axis)
                 chart_air.area_chart(st.session_state.history.set_index('Time')[['Air']], color=aq_color)
                 chart_temp.line_chart(st.session_state.history.set_index('Time')[['Temp']], color="#ffa657")
                 chart_hum.line_chart(st.session_state.history.set_index('Time')[['Hum']], color="#7ee787")
@@ -129,5 +153,5 @@ while True:
     except Exception as e:
         status_text.error(f"⚠️ Network Error: {e}")
         
-    # Wait 5 seconds before fetching again to match ESP8266 upload rate
-    time.sleep(5)   
+    # Wait 5 seconds before fetching again
+    time.sleep(5)
